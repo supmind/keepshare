@@ -327,9 +327,15 @@ class PikPakAPI:
             "x-device-id": self.device_id,
             "x-provider-name": "NONE",
             "x-sdk-version": "6.0.0",
+            "accept-language": "en-US",
             "x-os-version": "Win32", # Mimicking PC
             "x-platform-version": "1",
             "x-protocol-version": "301",
+            "x-net-work-type": "NONE",
+            "sec-ch-ua-platform": '"Windows"',
+            "x-client-version": "1.0.0",
+            "x-device-model": "chrome/115.0.0.0",
+            "x-device-name": "PC-Chrome",
             "Referer": "https://mypikpak.com/"
         }
 
