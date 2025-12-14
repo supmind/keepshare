@@ -275,3 +275,63 @@
 - **URL**: `GET /promoting/v1/sub-account/invite-link`
 - **Query Params**: `allow_login=true&action=get`
 - **Response**: `{ "invite_token": "..." }`
+
+---
+
+## 5. 登录与 Token 管理流程
+
+系统通过 `getToken` 统一管理 Token 的获取、缓存、刷新和重新登录。以下是完整流程：
+
+### 5.1 自动 Token 获取流程 (`getToken`)
+
+1.  **检查内存缓存**:
+    - 系统首先检查内存缓存 (`api.cache`) 中是否存在该 UserID 对应的有效 Token。
+    - 如果存在且未过期，直接返回 Token。
+    - **Key**: `token:{UserID}`
+    - **TTL**: 2 分钟
+
+2.  **检查数据库**:
+    - 如果缓存未命中，查询数据库 `pikpak_token` 表。
+    - 如果 Token 存在且有效期大于当前时间 + 缓冲时间（2分钟），直接使用该 Token，并写入缓存。
+
+3.  **尝试刷新 Token (Refresh Token)**:
+    - 如果数据库中 Token 已过期（或即将过期），但存在 `refresh_token`。
+    - 调用 `RefreshToken` 接口 (`POST /v1/auth/token`)。
+    - **成功**: 更新数据库中的 Access Token 和 Refresh Token，并返回新 Access Token。
+    - **失败**: 从数据库中删除该 Token 记录。
+
+4.  **重新登录 (Sign In)**:
+    - 如果上述步骤都无法获取有效 Token（无 Token 或刷新失败）。
+    - 从 `pikpak_master_account` (主账号) 或 `pikpak_worker_account` (子账号) 表中读取邮箱和密码。
+    - 调用 `CreateToken` -> `signIn` 执行完整登录流程。
+
+### 5.2 完整登录流程 (`signIn`)
+
+这是一个包含验证码的登录过程：
+
+1.  **获取验证码 Token (Captcha Init)**:
+    - 调用 `POST /v1/shield/captcha/init`。
+    - `action`: `"POST:/v1/auth/signin"`
+    - `meta`: `{ "email": "..." }`
+    - 获取 `captcha_token`。
+
+2.  **执行登录 (Sign In API)**:
+    - 调用 `POST /v1/auth/signin`。
+    - Header `X-Captcha-Token`: 填入上一步获取的 token。
+    - Body:
+      ```json
+      {
+        "username": "...",
+        "password": "...",
+        "client_id": "YNxT9w7GMdWvEOKa"
+      }
+      ```
+
+3.  **结果处理**:
+    - 获取 `access_token`, `refresh_token`, `expires_in`。
+    - 将新 Token 信息写入数据库 `pikpak_token` 表（`Clauses(clause.OnConflict{UpdateAll: true})`）。
+    - 返回 Token。
+
+### 5.3 异常处理
+- **密码为空**: 如果数据库中账号密码为空（未勾选“记住我”），返回错误，需提示用户重新输入。
+- **账号/密码错误**: 如果登录接口返回账号密码错误，系统会自动清除数据库中的无效账号记录，防止死循环重试。
